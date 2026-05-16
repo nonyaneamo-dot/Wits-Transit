@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Wits Transit Hub</title>
+    <style>
+        :root {
+            --bg: #fff5f6;
+            --card: #ffffff;
+            --primary: #ff758f;
+            --primary-dark: #ff4d6d;
+            --text: #4a154b;
+            --muted: #718096;
+            --accent: #fff0f3;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background-color: var(--bg);
+            color: var(--text);
+            margin: 0;
+            padding: 16px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        header {
+            text-align: center;
+            margin: 20px 0;
+            width: 100%;
+            max-width: 450px;
+        }
+
+        h1 { font-size: 26px; margin: 0 0 6px 0; font-weight: 800; }
+        header p { color: var(--muted); margin: 0; font-size: 14px; }
+
+        .dashboard-card {
+            background: var(--card);
+            width: 100%;
+            max-width: 450px;
+            border-radius: 24px;
+            box-shadow: 0 10px 30px rgba(255, 117, 143, 0.15);
+            padding: 24px;
+            box-sizing: border-box;
+        }
+
+        label {
+            font-size: 11px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: var(--muted);
+            margin-bottom: 8px;
+            display: block;
+        }
+
+        select {
+            width: 100%;
+            padding: 16px;
+            font-size: 16px;
+            border-radius: 14px;
+            border: 2px solid #ffe5ec;
+            background-color: #fbfbfb;
+            color: var(--text);
+            font-weight: 600;
+            margin-bottom: 20px;
+            outline: none;
+            cursor: pointer;
+            -webkit-appearance: none;
+        }
+
+        button {
+            width: 100%;
+            padding: 16px;
+            font-size: 16px;
+            font-weight: 700;
+            background-color: var(--primary);
+            color: white;
+            border: none;
+            border-radius: 14px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            margin-bottom: 24px;
+        }
+
+        button:hover {
+            background-color: var(--primary-dark);
+            transform: translateY(-1px);
+        }
+
+        .status-panel {
+            background-color: var(--accent);
+            border-left: 5px solid var(--primary-dark);
+            padding: 18px;
+            border-radius: 14px;
+            margin-bottom: 14px;
+        }
+
+        .status-title {
+            font-size: 11px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: var(--muted);
+            margin-bottom: 6px;
+        }
+
+        .status-value { font-size: 18px; font-weight: 700; }
+
+        .lost-found-footer {
+            margin-top: 24px;
+            border-top: 1px dashed #ffe5ec;
+            padding-top: 18px;
+            font-size: 13px;
+            line-height: 1.5;
+            color: #555;
+        }
+    </style>
+</head>
+<body>
+
+    <header>
+        <h1>Wits Transit Hub</h1>
+        <p>Live Location & ETA Stream</p>
+    </header>
+
+    <div class="dashboard-card">
+        <label for="route-select">Active Bus Routes</label>
+        <select id="route-select">
+            <option value="route1">Route 1 - Full Circuit</option>
+            <option value="route2">Route 2 - NSW / WEC Shuttle</option>
+            <option value="route3a">Route 3A - WJ / AMIC Shuttle</option>
+            <option value="route6d">Route 6D - Rosebank Shuttle</option>
+        </select>
+
+        <button id="action-btn">Launch Live Tracking</button>
+
+        <div class="status-panel">
+            <div class="status-title">Last Verified Location</div>
+            <div id="live-location" class="status-value">System Standby</div>
+        </div>
+
+        <div class="status-panel">
+            <div class="status-title">Dynamic ETA Indicator</div>
+            <div id="live-eta" class="status-value">--</div>
+        </div>
+
+        <div class="lost-found-footer">
+            <span style="font-weight: 700; color: var(--primary-dark);">🎒 Security & Lost Property Log</span><br>
+            Current Fleet Asset ID: <strong id="bus-asset-id" style="color: #111;">--</strong>
+        </div>
+    </div>
+
+    <script>
+        const scheduleDataset = {
+            route1: {
+                asset: "WITS-BUS-04 (Volvo Circuit Series)",
+                stops: ["AMIC Deck", "Noswall Hall", "Wits Junction", "Wits Education Campus", "EOH (Oppenheimer)", "KNK Residence"]
+            },
+            route2: {
+                asset: "WITS-BUS-08 (Mercedes Transit)",
+                stops: ["Noswall Hall", "Wits Education Campus", "AMIC Deck"]
+            },
+            route3a: {
+                asset: "WITS-SHUTTLE-15 (Toyota Quantum)",
+                stops: ["Wits Junction", "AMIC Deck"]
+            },
+            route6d: {
+                asset: "WITS-SHUTTLE-12 (Mercedes Sprinter)",
+                stops: ["Wits Junction", "Rosebank Mall"]
+            }
+        };
+
+        let activeStopIndex = 0;
+        let mainTimerLoop = null;
+        let systemActive = false;
+
+        const routeSelect = document.getElementById('route-select');
+        const actionBtn = document.getElementById('action-btn');
+        const liveLocation = document.getElementById('live-location');
+        const liveEta = document.getElementById('live-eta');
+        const busAssetId = document.getElementById('bus-asset-id');
+
+        busAssetId.innerText = scheduleDataset[routeSelect.value].asset;
+
+        routeSelect.addEventListener('change', () => {
+            shutdownStream();
+            busAssetId.innerText = scheduleDataset[routeSelect.value].asset;
+            liveLocation.innerText = "Route initialized. Awaiting stream.";
+            liveEta.innerText = "--";
+        });
+
+        actionBtn.addEventListener('click', () => {
+            if (systemActive) {
+                shutdownStream();
+            } else {
+                bootstrapStream();
+            }
+        });
+
+        function bootstrapStream() {
+            systemActive = true;
+            actionBtn.innerText = "Disconnect Stream";
+            actionBtn.style.backgroundColor = "#4a154b";
+            activeStopIndex = 0;
+            executeDataTick();
+            mainTimerLoop = setInterval(executeDataTick, 3000);
+        }
+
+        function shutdownStream() {
+            systemActive = false;
+            actionBtn.innerText = "Launch Live Tracking";
+            actionBtn.style.backgroundColor = "var(--primary)";
+            clearInterval(mainTimerLoop);
+        }
+
+        function executeDataTick() {
+            const currentRoute = scheduleDataset[routeSelect.value];
+            const stopCount = currentRoute.stops.length;
+
+            if (activeStopIndex < stopCount) {
+                const currentStop = currentRoute.stops[activeStopIndex];
+                liveLocation.innerHTML = `📍 En Route Past: <b>${currentStop}</b>`;
+
+                let upcomingStop = "";
+                if (activeStopIndex + 1 < stopCount) {
+                    upcomingStop = currentRoute.stops[activeStopIndex + 1];
+                } else {
+                    upcomingStop = currentRoute.stops[0];
+                }
+
+                const calculatedETA = Math.floor(Math.random() * 5) + 3;
+                liveEta.innerHTML = `⏱️ <b>${calculatedETA} mins</b> away from ${upcomingStop}`;
+
+                activeStopIndex++;
+            } else {
+                activeStopIndex = 0;
+                executeDataTick();
+            }
+        }
+    </script>
+</body>
+</html>
