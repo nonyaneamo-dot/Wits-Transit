@@ -3,7 +3,10 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Wits Transit Hub</title>
+    <title>Wits Live Transit Network</title>
+    
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/paho-mqtt/1.0.1/mqttws31.min.js" type="text/javascript"></script>
+
     <style>
         :root {
             --bg: #fff5f6;
@@ -13,6 +16,7 @@
             --text: #4a154b;
             --muted: #718096;
             --accent: #fff0f3;
+            --driver-color: #4a154b;
         }
 
         body {
@@ -28,13 +32,43 @@
 
         header {
             text-align: center;
-            margin: 20px 0;
+            margin: 15px 0;
             width: 100%;
             max-width: 450px;
         }
 
-        h1 { font-size: 26px; margin: 0 0 6px 0; font-weight: 800; }
-        header p { color: var(--muted); margin: 0; font-size: 14px; }
+        h1 { font-size: 24px; margin: 0 0 4px 0; font-weight: 800; }
+        header p { color: var(--muted); margin: 0; font-size: 13px; }
+
+        /* Role Switcher Layout */
+        .role-container {
+            display: flex;
+            width: 100%;
+            max-width: 450px;
+            background: #ffe5ec;
+            border-radius: 12px;
+            padding: 4px;
+            box-sizing: border-box;
+            margin-bottom: 16px;
+        }
+
+        .role-btn {
+            flex: 1;
+            padding: 10px;
+            border: none;
+            background: transparent;
+            font-weight: 700;
+            color: var(--text);
+            cursor: pointer;
+            border-radius: 10px;
+            font-size: 14px;
+            transition: all 0.2s ease;
+        }
+
+        .role-btn.active {
+            background: var(--card);
+            box-shadow: 0 4px 10px rgba(0,0,0,0.05);
+        }
 
         .dashboard-card {
             background: var(--card);
@@ -45,6 +79,9 @@
             padding: 24px;
             box-sizing: border-box;
         }
+
+        .view-panel { display: none; }
+        .view-panel.active { display: block; }
 
         label {
             font-size: 11px;
@@ -67,27 +104,18 @@
             font-weight: 600;
             margin-bottom: 20px;
             outline: none;
-            cursor: pointer;
-            -webkit-appearance: none;
         }
 
-        button {
+        button.action {
             width: 100%;
             padding: 16px;
             font-size: 16px;
             font-weight: 700;
-            background-color: var(--primary);
             color: white;
             border: none;
             border-radius: 14px;
             cursor: pointer;
             transition: all 0.2s ease;
-            margin-bottom: 24px;
-        }
-
-        button:hover {
-            background-color: var(--primary-dark);
-            transform: translateY(-1px);
         }
 
         .status-panel {
@@ -95,150 +123,214 @@
             border-left: 5px solid var(--primary-dark);
             padding: 18px;
             border-radius: 14px;
-            margin-bottom: 14px;
+            margin-top: 14px;
         }
 
         .status-title {
             font-size: 11px;
             font-weight: 700;
             text-transform: uppercase;
-            letter-spacing: 0.5px;
             color: var(--muted);
             margin-bottom: 6px;
         }
 
         .status-value { font-size: 18px; font-weight: 700; }
-
-        .lost-found-footer {
-            margin-top: 24px;
-            border-top: 1px dashed #ffe5ec;
-            padding-top: 18px;
-            font-size: 13px;
-            line-height: 1.5;
-            color: #555;
+        
+        .debug-coords {
+            font-size: 11px;
+            color: var(--muted);
+            margin-top: 8px;
+            font-family: monospace;
         }
     </style>
 </head>
 <body>
 
     <header>
-        <h1>Wits Transit Hub</h1>
-        <p>Live Location & ETA Stream</p>
+        <h1>Wits Transit Network</h1>
+        <p>Real-Time Hardware Tracking Interface</p>
     </header>
 
+    <div class="role-container">
+        <button class="role-btn active" onclick="switchRole('student')">🎓 Student View</button>
+        <button class="role-btn" onclick="switchRole('driver')">🚌 Driver Tracker</button>
+    </div>
+
     <div class="dashboard-card">
-        <label for="route-select">Active Bus Routes</label>
-        <select id="route-select">
-            <option value="route1">Route 1 - Full Circuit</option>
-            <option value="route2">Route 2 - NSW / WEC Shuttle</option>
-            <option value="route3a">Route 3A - WJ / AMIC Shuttle</option>
-            <option value="route6d">Route 6D - Rosebank Shuttle</option>
-        </select>
+        
+        <div id="student-panel" class="view-panel active">
+            <label for="route-select">Select Target Route</label>
+            <select id="route-select">
+                <option value="route1">Route 1 - Full Circuit</option>
+                <option value="route2">Route 2 - NSW / WEC Shuttle</option>
+                <option value="route3a">Route 3A - WJ / AMIC Shuttle</option>
+                <option value="route6d">Route 6D - Rosebank Shuttle</option>
+            </select>
 
-        <button id="action-btn">Launch Live Tracking</button>
+            <div class="status-panel">
+                <div class="status-title">Live Device Position</div>
+                <div id="student-location" class="status-value" style="color: var(--primary-dark);">Awaiting Live Stream...</div>
+            </div>
 
-        <div class="status-panel">
-            <div class="status-title">Last Verified Location</div>
-            <div id="live-location" class="status-value">System Standby</div>
+            <div class="status-panel" style="border-left-color: #2b2d42;">
+                <div class="status-title">Fleet Security Asset Verification</div>
+                <div id="student-asset" class="status-value" style="font-size:15px;">WITS-FLEET-TRACKER</div>
+            </div>
         </div>
 
-        <div class="status-panel">
-            <div class="status-title">Dynamic ETA Indicator</div>
-            <div id="live-eta" class="status-value">--</div>
+        <div id="driver-panel" class="view-panel">
+            <label for="driver-route-select">Assigned Operational Route</label>
+            <select id="driver-route-select">
+                <option value="route1">Route 1 - Full Circuit</option>
+                <option value="route2">Route 2 - NSW / WEC Shuttle</option>
+                <option value="route3a">Route 3A - WJ / AMIC Shuttle</option>
+                <option value="route6d">Route 6D - Rosebank Shuttle</option>
+            </select>
+
+            <button id="broadcast-btn" class="action" style="background-color: var(--driver-color);">Broadcast GPS Position</button>
+
+            <div class="status-panel" style="border-left-color: var(--driver-color);">
+                <div class="status-title">Local Geofence Status</div>
+                <div id="driver-status" class="status-value">Tracking Off</div>
+                <div id="driver-coords" class="debug-coords">Lat: --, Lng: --</div>
+            </div>
         </div>
 
-        <div class="lost-found-footer">
-            <span style="font-weight: 700; color: var(--primary-dark);">🎒 Security & Lost Property Log</span><br>
-            Current Fleet Asset ID: <strong id="bus-asset-id" style="color: #111;">--</strong>
-        </div>
     </div>
 
     <script>
-        const scheduleDataset = {
-            route1: {
-                asset: "WITS-BUS-04 (Volvo Circuit Series)",
-                stops: ["AMIC Deck", "Noswall Hall", "Wits Junction", "Wits Education Campus", "EOH (Oppenheimer)", "KNK Residence"]
-            },
-            route2: {
-                asset: "WITS-BUS-08 (Mercedes Transit)",
-                stops: ["Noswall Hall", "Wits Education Campus", "AMIC Deck"]
-            },
-            route3a: {
-                asset: "WITS-SHUTTLE-15 (Toyota Quantum)",
-                stops: ["Wits Junction", "AMIC Deck"]
-            },
-            route6d: {
-                asset: "WITS-SHUTTLE-12 (Mercedes Sprinter)",
-                stops: ["Wits Junction", "Rosebank Mall"]
+        // CRITICAL CONFIGURATION: Change this word to anything unique so your channel doesn't mix with anyone else's
+        const UNIQUE_PROJECT_ID = "wits_campus_tracker_2026_prod";
+
+        // Coordinates for automated Geofencing calculation loops
+        const stopCoordinates = {
+            "AMIC Deck": [-26.1926, 28.0303],
+            "Noswall Hall": [-26.1912, 28.0325],
+            "Wits Junction": [-26.1824, 28.0361],
+            "Wits Education Campus": [-26.1775, 28.0442],
+            "EOH (Oppenheimer)": [-26.1802, 28.0285],
+            "KNK Residence": [-26.1845, 28.0290],
+            "Rosebank Mall": [-26.1462, 28.0416]
+        };
+
+        // CONNECT TO THE FREE REAL-TIME CLOUD RADIO TOWER (HiveMQ Public Broker)
+        const clientID = "client_" + Math.random().toString(16).substr(2, 8);
+        const mqttClient = new Paho.MQTT.Client("broker.hivemq.com", Number(8000), "/mqtt", clientID);
+
+        mqttClient.onConnectionLost = (responseObject) => {
+            console.log("Connection Lost: " + responseObject.errorMessage);
+            setTimeout(() => mqttClient.connect({onSuccess: onConnect, useSSL: true}), 3000);
+        };
+
+        mqttClient.onMessageArrived = (message) => {
+            const data = JSON.parse(message.payloadString);
+            const currentSelectedRoute = document.getElementById('route-select').value;
+            
+            // Only update the display if the incoming broadcast matches the route the student is viewing
+            if (data.route === currentSelectedRoute) {
+                document.getElementById('student-location').innerHTML = `📍 ${data.location}`;
+                document.getElementById('student-asset').innerText = `ID: ${data.asset}`;
             }
         };
 
-        let activeStopIndex = 0;
-        let mainTimerLoop = null;
-        let systemActive = false;
+        mqttClient.connect({ onSuccess: onConnect, useSSL: true });
 
-        const routeSelect = document.getElementById('route-select');
-        const actionBtn = document.getElementById('action-btn');
-        const liveLocation = document.getElementById('live-location');
-        const liveEta = document.getElementById('live-eta');
-        const busAssetId = document.getElementById('bus-asset-id');
+        function onConnect() {
+            console.log("Connected to Real-Time Cloud Infrastructure");
+            // Listen to any updates on our project channel
+            mqttClient.subscribe(UNIQUE_PROJECT_ID + "/#");
+        }
 
-        busAssetId.innerText = scheduleDataset[routeSelect.value].asset;
-
-        routeSelect.addEventListener('change', () => {
-            shutdownStream();
-            busAssetId.innerText = scheduleDataset[routeSelect.value].asset;
-            liveLocation.innerText = "Route initialized. Awaiting stream.";
-            liveEta.innerText = "--";
-        });
-
-        actionBtn.addEventListener('click', () => {
-            if (systemActive) {
-                shutdownStream();
+        // ROLE TOGGLE LOGIC
+        function switchRole(role) {
+            document.querySelectorAll('.role-btn').forEach(btn => btn.classList.remove('active'));
+            document.querySelectorAll('.view-panel').forEach(panel => panel.classList.remove('active'));
+            
+            if (role === 'student') {
+                event.target.classList.add('active');
+                document.getElementById('student-panel').classList.add('active');
             } else {
-                bootstrapStream();
+                event.target.classList.add('active');
+                document.getElementById('driver-panel').classList.add('active');
             }
-        });
-
-        function bootstrapStream() {
-            systemActive = true;
-            actionBtn.innerText = "Disconnect Stream";
-            actionBtn.style.backgroundColor = "#4a154b";
-            activeStopIndex = 0;
-            executeDataTick();
-            mainTimerLoop = setInterval(executeDataTick, 3000);
         }
 
-        function shutdownStream() {
-            systemActive = false;
-            actionBtn.innerText = "Launch Live Tracking";
-            actionBtn.style.backgroundColor = "var(--primary)";
-            clearInterval(mainTimerLoop);
-        }
+        // HARDWARE GEOLOCATION HARVESTING ENGINE (DRIVER SIDE)
+        let geoWatchID = null;
+        let isBroadcasting = false;
+        const broadcastBtn = document.getElementById('broadcast-btn');
 
-        function executeDataTick() {
-            const currentRoute = scheduleDataset[routeSelect.value];
-            const stopCount = currentRoute.stops.length;
+        broadcastBtn.addEventListener('click', () => {
+            if (isBroadcasting) {
+                // Turn off location tracking
+                if (geoWatchID) navigator.geolocation.clearWatch(geoWatchID);
+                isBroadcasting = false;
+                broadcastBtn.innerText = "Broadcast GPS Position";
+                broadcastBtn.style.backgroundColor = "var(--driver-color)";
+                document.getElementById('driver-status').innerText = "Tracking Off";
+            } else {
+                // Request physical access to device GPS chip hardware
+                if ("geolocation" in navigator) {
+                    isBroadcasting = true;
+                    broadcastBtn.innerText = "Disconnect Live Broadcast";
+                    broadcastBtn.style.backgroundColor = "#d90429";
+                    document.getElementById('driver-status').innerText = "Acquiring GPS Fix...";
 
-            if (activeStopIndex < stopCount) {
-                const currentStop = currentRoute.stops[activeStopIndex];
-                liveLocation.innerHTML = `📍 En Route Past: <b>${currentStop}</b>`;
-
-                let upcomingStop = "";
-                if (activeStopIndex + 1 < stopCount) {
-                    upcomingStop = currentRoute.stops[activeStopIndex + 1];
+                    geoWatchID = navigator.geolocation.watchPosition(handleGPSUpdate, handleGPSError, {
+                        enableHighAccuracy: true, // Tells phone to activate power-heavy GPS hardware for maximum metric accuracy
+                        maximumAge: 0
+                    });
                 } else {
-                    upcomingStop = currentRoute.stops[0];
+                    alert("Your device hardware doesn't support GPS positioning.");
                 }
-
-                const calculatedETA = Math.floor(Math.random() * 5) + 3;
-                liveEta.innerHTML = `⏱️ <b>${calculatedETA} mins</b> away from ${upcomingStop}`;
-
-                activeStopIndex++;
-            } else {
-                activeStopIndex = 0;
-                executeDataTick();
             }
+        });
+
+        function handleGPSUpdate(position) {
+            const lat = position.coords.latitude;
+            const lng = position.coords.longitude;
+            
+            document.getElementById('driver-coords').innerText = `Lat: ${lat.toFixed(5)}, Lng: ${lng.toFixed(5)}`;
+            
+            // Calculate which official Wits hub the phone is physically closest to
+            let closestStop = "In Transit";
+            let shortestDistance = Infinity;
+
+            for (const [stopName, coords] of Object.entries(stopCoordinates)) {
+                const distance = Math.sqrt(Math.pow(lat - coords[0], 2) + Math.pow(lng - coords[1], 2));
+                if (distance < shortestDistance) {
+                    shortestDistance = distance;
+                    closestStop = stopName;
+                }
+            }
+
+            // GEOFENCE MATH DETECTOR: If phone is within ~150 meters of coordinates, it's officially "At" that stop
+            let statusText = "";
+            if (shortestDistance < 0.0015) {
+                statusText = `At ${closestStop}`;
+            } else {
+                statusText = `In Transit (Near ${closestStop})`;
+            }
+
+            document.getElementById('driver-status').innerHTML = `🟢 Live: ${statusText}`;
+
+            // BUILD THE DATA PACKAGE TO SEND VIA RADIO TOWER
+            const selectedRoute = document.getElementById('driver-route-select').value;
+            const payload = {
+                route: selectedRoute,
+                location: statusText,
+                asset: "WITS-MOBILE-" + clientID.toUpperCase().substr(7,4)
+            };
+
+            // BEAM IT TO THE STUDENT DISPLAYS OVER THE WEB INSTANTLY
+            const message = new Paho.MQTT.Message(JSON.stringify(payload));
+            message.destinationName = UNIQUE_PROJECT_ID + "/" + selectedRoute;
+            mqttClient.send(message);
+        }
+
+        function handleGPSError(err) {
+            console.warn(`GPS Error (${err.code}): ${err.message}`);
+            document.getElementById('driver-status').innerText = "Error acquiring location. Ensure GPS/Location permissions are turned on.";
         }
     </script>
 </body>
