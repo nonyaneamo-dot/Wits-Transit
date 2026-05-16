@@ -220,10 +220,7 @@
 
             <label>Active Buses on Route</label>
             <div id="bus-fleet-container">
-                <div style="color: var(--muted); text-align: center; padding: 20px; font-size: 14px;">
-                    No buses active on this route right now.
                 </div>
-            </div>
         </div>
 
         <div id="driver-panel" class="view-panel">
@@ -281,18 +278,16 @@
     <script>
         const UNIQUE_PROJECT_ID = "wits_campus_tracker_2026_prod";
 
-        // Upgraded and expanded precise geographic stop dataset anchors
         const stopCoordinates = {
             "AMIC Deck": [-26.19260, 28.03030],
             "Noswall Hall": [-26.19120, 28.03250],
             "Wits Junction": [-26.18203, 28.03683], 
-            "Wits Education Campus": [-26.17963, 28.04442], // PRECISION RE-CONFIGURED FIXED METRIC
+            "Wits Education Campus": [-26.17963, 28.04442], 
             "EOH (Oppenheimer)": [-26.18020, 28.02850],
             "KNK Residence": [-26.18450, 28.0290],
             "Rosebank Mall": [-26.14620, 28.04160]
         };
 
-        // Fully exhaustive schedule arrays representing ALL possible timetable channels
         const routeSchedules = {
             route1: ["AMIC Deck", "Noswall Hall", "Wits Junction", "Wits Education Campus", "EOH (Oppenheimer)", "KNK Residence"],
             route2: ["Noswall Hall", "Wits Education Campus", "AMIC Deck"],
@@ -302,7 +297,7 @@
             route4a1: ["Wits Education Campus", "Noswall Hall", "AMIC Deck"],
             route4b: ["Noswall Hall", "Wits Education Campus", "AMIC Deck"],
             route5: ["EOH (Oppenheimer)", "KNK Residence", "AMIC Deck"],
-            route1_weekend: ["AMIC Deck", "Noswall Hall", "Wits Education Campus", "EOH (Oppenheimer)", "KNK Residence"], // Excludes WJ Residence over weekends
+            route1_weekend: ["AMIC Deck", "Noswall Hall", "Wits Education Campus", "EOH (Oppenheimer)", "KNK Residence"], 
             route3c: ["Wits Junction", "Wits Education Campus", "AMIC Deck"],
             route6a: ["AMIC Deck", "KNK Residence", "Rosebank Mall"],
             route6b: ["AMIC Deck", "Noswall Hall", "Rosebank Mall"],
@@ -311,6 +306,8 @@
         };
 
         let trackedBusesData = {};
+        let isSearching = false;
+        let searchTimeout = null;
 
         // INITIALIZE SECURE CLOUD CONNECTION PIPELINE
         const clientID = "client_" + Math.random().toString(16).substr(2, 8);
@@ -325,7 +322,6 @@
             const currentSelectedRoute = document.getElementById('route-select').value;
             
             if (data.route === currentSelectedRoute) {
-                // INSTANT OFF-BOARD SEPARATION PROTOCOL: If device pushed an explicit offline signal, erase immediately
                 if (data.offline === true) {
                     delete trackedBusesData[data.asset];
                 } else {
@@ -350,8 +346,20 @@
                 const currentRoute = document.getElementById('route-select').value;
                 mqttClient.unsubscribe(UNIQUE_PROJECT_ID + "/#");
                 mqttClient.subscribe(UNIQUE_PROJECT_ID + "/" + currentRoute + "/+");
+                
                 trackedBusesData = {}; 
+                
+                // Trigger the searching phase states instantly
+                isSearching = true;
                 renderBusFleetDisplay();
+
+                if (searchTimeout) clearTimeout(searchTimeout);
+                
+                // Allow a 4-second listening window before declaring the line completely empty
+                searchTimeout = setTimeout(() => {
+                    isSearching = false;
+                    renderBusFleetDisplay();
+                }, 4000);
             }
         }
 
@@ -362,12 +370,15 @@
             container.innerHTML = "";
             
             const activeBusesKeys = Object.keys(trackedBusesData).filter(key => {
-                // Safety cache sweeper for non-graceful dropouts (phone dies or loses signal completely)
                 return (Date.now() - trackedBusesData[key].timestamp) < 25000;
             });
 
             if (activeBusesKeys.length === 0) {
-                container.innerHTML = `<div style="color: var(--muted); text-align: center; padding: 20px; font-size: 14px;">No active buses running on this route right now.</div>`;
+                if (isSearching) {
+                    container.innerHTML = `<div style="color: var(--muted); text-align: center; padding: 25px; font-size: 14px; font-weight: 600;">🔍 Searching for active broadcasts...</div>`;
+                } else {
+                    container.innerHTML = `<div style="color: var(--muted); text-align: center; padding: 25px; font-size: 14px;">No active buses running on this route right now.</div>`;
+                }
                 return;
             }
 
@@ -387,10 +398,9 @@
             });
         }
 
-        // PERSISTENT PRESENTATION INTERMEDIARY RE-RENDER RECYCLER
         setInterval(renderBusFleetDisplay, 5000);
 
-        // HAVERSINE PRECISION SPHERICAL GEOMETRY COMPUTATION ENGINE
+        // HAVERSINE PRECISION RADIAL METRIC ENGINE
         function calculateHaversineDistanceInMeters(lat1, lon1, lat2, lon2) {
             const R = 6371e3; 
             const phi1 = lat1 * Math.PI / 180;
@@ -406,7 +416,7 @@
             return R * c; 
         }
 
-        // TELEMETRY BROADCASTER MANAGEMENT CORE
+        // TELEMETRY HARDWARE CONTROLLER PIPELINE
         let geoWatchID = null;
         let isBroadcasting = false;
         const broadcastBtn = document.getElementById('broadcast-btn');
@@ -419,7 +429,6 @@
             }
 
             if (isBroadcasting) {
-                // INSTANT RECOGNITION DISCONNECT TRANSMISSION LINE
                 const selectedRoute = document.getElementById('driver-route-select').value;
                 const busLabelIdentifier = inputField.value.trim().toUpperCase();
                 
@@ -444,6 +453,12 @@
                     broadcastBtn.style.backgroundColor = "#d90429";
                     document.getElementById('driver-status').innerText = "Acquiring Precision Sat Fix...";
 
+                    // LATENCY FIX: Force an immediate individual location poll right now!
+                    navigator.geolocation.getCurrentPosition(handleGPSUpdate, handleGPSError, {
+                        enableHighAccuracy: true
+                    });
+
+                    // Subsequently queue the moving listener channel thread loop
                     geoWatchID = navigator.geolocation.watchPosition(handleGPSUpdate, handleGPSError, {
                         enableHighAccuracy: true,
                         maximumAge: 0
@@ -475,7 +490,6 @@
             let calculatedLocationText = "";
             let calculatedETAText = "";
 
-            // 150m Adaptive Cluster Absorber Limit Boundary
             if (shortestDistanceInMeters <= 150) {
                 calculatedLocationText = `At ${closestStopName}`;
                 
@@ -514,7 +528,6 @@
             document.getElementById('driver-status').innerText = "GPS Access Token Error. Check device permissions layouts.";
         }
 
-        // ROLE MANAGEMENT & SECURITY ACCESS GATING MECHANICS
         function verifyAccessGateToken() {
             const tokenInput = document.getElementById('access-code-input');
             
@@ -530,7 +543,7 @@
 
         function logoutDriver() {
             if (isBroadcasting) {
-                broadcastBtn.click(); // Fires the graceful immediate server disconnect message cleanly
+                broadcastBtn.click(); 
             }
             document.getElementById('driver-panel').classList.remove('active');
             document.getElementById('gate-container').style.display = "flex";
