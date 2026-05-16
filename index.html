@@ -18,6 +18,7 @@
             --accent: #fff0f3;
             --driver-color: #4a154b;
             --success: #2a9d8f;
+            --warning: #e76f51;
         }
 
         body {
@@ -100,6 +101,7 @@
             border-radius: 14px;
             cursor: pointer;
             transition: all 0.2s ease;
+            margin-bottom: 10px;
         }
 
         /* Bus Fleet Output Display Layout cards */
@@ -218,6 +220,10 @@
                 </optgroup>
             </select>
 
+            <label for="student-target-stop">Your Location / Destination Stop</label>
+            <select id="student-target-stop">
+                </select>
+
             <label>Active Buses on Route</label>
             <div id="bus-fleet-container"></div>
         </div>
@@ -254,6 +260,8 @@
             </select>
 
             <button id="broadcast-btn" class="action" style="background-color: var(--driver-color);">Broadcast GPS Position</button>
+            
+            <button id="depart-btn" class="action" style="background-color: var(--warning); display: none;">Depart Current Stop Now</button>
 
             <div class="status-panel">
                 <div class="status-title">Local Geofencing Metrics</div>
@@ -307,7 +315,12 @@
         let trackedBusesData = {};
         let isSearching = false;
         let searchTimeout = null;
-        let currentBroadcastedRoute = ""; // State tracker to isolate driver side route transitions
+        let currentBroadcastedRoute = ""; 
+        
+        // DRIVER MEMORY STATE LOGS
+        let currentClosestStopName = "";
+        let driverManualTransitOverride = false;
+        let latestStoredPosition = null;
 
         // INITIALIZE SECURE CLOUD CONNECTION PIPELINE
         const clientID = "client_" + Math.random().toString(16).substr(2, 8);
@@ -326,8 +339,8 @@
                     delete trackedBusesData[data.asset];
                 } else {
                     trackedBusesData[data.asset] = {
-                        location: data.location,
-                        eta: data.eta,
+                        closestStop: data.closestStop,
+                        isStopped: data.isStopped,
                         timestamp: Date.now()
                     };
                 }
@@ -347,6 +360,8 @@
                 mqttClient.unsubscribe(UNIQUE_PROJECT_ID + "/#");
                 mqttClient.subscribe(UNIQUE_PROJECT_ID + "/" + currentRoute + "/+");
                 
+                populateStudentDestinationDropdown(currentRoute);
+                
                 trackedBusesData = {}; 
                 isSearching = true;
                 renderBusFleetDisplay();
@@ -360,8 +375,23 @@
             }
         }
 
-        document.getElementById('route-select').addEventListener('change', updateSubscription);
+        function populateStudentDestinationDropdown(routeKey) {
+            const dropdown = document.getElementById('student-target-stop');
+            dropdown.innerHTML = "";
+            const stopsArray = routeSchedules[routeKey];
+            
+            stopsArray.forEach(stop => {
+                const opt = document.createElement('option');
+                opt.value = stop;
+                opt.innerText = stop;
+                dropdown.appendChild(opt);
+            });
+        }
 
+        document.getElementById('route-select').addEventListener('change', updateSubscription);
+        document.getElementById('student-target-stop').addEventListener('change', renderBusFleetDisplay);
+
+        // STUDENT ENGINE INTERFACE BUILDER & PRECISION ETAS COMPUTER LAYER
         function renderBusFleetDisplay() {
             const container = document.getElementById('bus-fleet-container');
             container.innerHTML = "";
@@ -379,16 +409,61 @@
                 return;
             }
 
+            const activeRouteKey = document.getElementById('route-select').value;
+            const studentChosenTargetStop = document.getElementById('student-target-stop').value;
+            const stopsArray = routeSchedules[activeRouteKey];
+
             activeBusesKeys.forEach(assetId => {
                 const bus = trackedBusesData[assetId];
+                
+                let textLocation = "";
+                let textETA = "";
+
+                if (bus.isStopped) {
+                    textLocation = `📍 Parked At: <b>${bus.closestStop}</b>`;
+                } else {
+                    textLocation = `🚌 In Transit (Approaching: <b>${bus.closestStop}</b>)`;
+                }
+
+                // LEG TRAVERSAL CALCULATION CORE
+                const busIdx = stopsArray.indexOf(bus.closestStop);
+                const studentIdx = stopsArray.indexOf(studentChosenTargetStop);
+
+                if (busIdx !== -1 && studentIdx !== -1) {
+                    if (busIdx === studentIdx) {
+                        if (bus.isStopped) {
+                            textETA = `✨ The bus is at your stop right now!`;
+                        } else {
+                            textETA = `⏱️ Arrival Imminent: Pulling up to your platform!`;
+                        }
+                    } else {
+                        // Loop circularly around array track parameters to count leg increments
+                        let pointer = busIdx;
+                        let legCounts = bus.isStopped ? 0 : -0.5; // If moving towards busIdx, subtract half a leg penalty
+
+                        while (pointer !== studentIdx) {
+                            pointer = (pointer + 1) % stopsArray.length;
+                            legCounts++;
+                        }
+                        
+                        const averageMinutesPerLeg = 5; 
+                        let totalCalculatedMinutes = Math.round(legCounts * averageMinutesPerLeg);
+                        if (totalCalculatedMinutes < 1) totalCalculatedMinutes = 2; // Floor boundary safety line
+
+                        textETA = `⏱️ ETA to your spot: <b>~${totalCalculatedMinutes} mins</b>`;
+                    }
+                } else {
+                    textETA = `⏱️ Syncing scheduled network maps...`;
+                }
+
                 const cardHtml = `
                     <div class="bus-card">
                         <div class="bus-meta">
                             <span>Fleet ID: ${assetId}</span>
                             <span style="color: var(--success);">● LIVE SECURE</span>
                         </div>
-                        <div class="bus-location">${bus.location}</div>
-                        <div class="bus-eta">${bus.eta}</div>
+                        <div class="bus-location">${textLocation}</div>
+                        <div class="bus-eta">${textETA}</div>
                     </div>
                 `;
                 container.insertAdjacentHTML('beforeend', cardHtml);
@@ -397,7 +472,7 @@
 
         setInterval(renderBusFleetDisplay, 5000);
 
-        // HAVERSINE CALCULATOR
+        // HAVERSINE DISTANCE COMPUTATOR
         function calculateHaversineDistanceInMeters(lat1, lon1, lat2, lon2) {
             const R = 6371e3; 
             const phi1 = lat1 * Math.PI / 180;
@@ -413,18 +488,32 @@
             return R * c; 
         }
 
-        // TELEMETRY HARDWARE ENGINE INTERFACE
+        // DRIVER PANEL CONTROLLER MECHANICS
         let geoWatchID = null;
         let isBroadcasting = false;
         const broadcastBtn = document.getElementById('broadcast-btn');
+        const departBtn = document.getElementById('depart-btn');
         const driverRouteSelect = document.getElementById('driver-route-select');
 
-        // ROUTE SWITCH HOOK ENGINE (Instantly drops old route and triggers immediate new update)
+        // MANUAL INTERACTIVE DEPARTURE HOOK CLICK ACTION
+        departBtn.addEventListener('click', () => {
+            if (isBroadcasting && !driverManualTransitOverride) {
+                driverManualTransitOverride = true;
+                departBtn.innerText = "Transit State Locked";
+                departBtn.style.backgroundColor = "var(--muted)";
+                departBtn.disabled = true;
+
+                // Re-fire pipeline update instantly forcing an In Transit package stream
+                if (latestStoredPosition) {
+                    handleGPSUpdate(latestStoredPosition);
+                }
+            }
+        });
+
         driverRouteSelect.addEventListener('change', () => {
             if (isBroadcasting && currentBroadcastedRoute) {
                 const busLabelIdentifier = document.getElementById('bus-number').value.trim().toUpperCase();
                 
-                // 1. Instantly clear us off the PREVIOUS route dashboard
                 if (mqttClient.isConnected()) {
                     const offlinePayload = { route: currentBroadcastedRoute, asset: busLabelIdentifier, offline: true };
                     const msg = new Paho.MQTT.Message(JSON.stringify(offlinePayload));
@@ -432,14 +521,11 @@
                     mqttClient.send(msg);
                 }
 
-                // 2. Synchronize internal tracker to the new channel selection
                 currentBroadcastedRoute = driverRouteSelect.value;
+                resetDriverManualStates();
                 document.getElementById('driver-status').innerText = "Rerouting stream, acquiring new fix...";
 
-                // 3. Force immediate hardware position poll on the new line
-                navigator.geolocation.getCurrentPosition(handleGPSUpdate, handleGPSError, {
-                    enableHighAccuracy: true
-                });
+                navigator.geolocation.getCurrentPosition(handleGPSUpdate, handleGPSError, { enableHighAccuracy: true });
             }
         });
 
@@ -462,8 +548,10 @@
                 if (geoWatchID) navigator.geolocation.clearWatch(geoWatchID);
                 isBroadcasting = false;
                 currentBroadcastedRoute = "";
+                resetDriverManualStates();
                 broadcastBtn.innerText = "Broadcast GPS Position";
                 broadcastBtn.style.backgroundColor = "var(--driver-color)";
+                departBtn.style.display = "none";
                 document.getElementById('driver-status').innerText = "Tracking Standby";
                 inputField.disabled = false;
             } else {
@@ -473,67 +561,80 @@
                     currentBroadcastedRoute = driverRouteSelect.value;
                     broadcastBtn.innerText = "Disconnect Live Broadcast";
                     broadcastBtn.style.backgroundColor = "#d90429";
+                    departBtn.style.display = "block";
+                    resetDriverManualStates();
                     document.getElementById('driver-status').innerText = "Acquiring Precision Sat Fix...";
 
-                    // LATENCY FIX: Fire immediate query token payload transmission sequence
-                    navigator.geolocation.getCurrentPosition(handleGPSUpdate, handleGPSError, {
-                        enableHighAccuracy: true
-                    });
-
-                    geoWatchID = navigator.geolocation.watchPosition(handleGPSUpdate, handleGPSError, {
-                        enableHighAccuracy: true,
-                        maximumAge: 0
-                    });
+                    navigator.geolocation.getCurrentPosition(handleGPSUpdate, handleGPSError, { enableHighAccuracy: true });
+                    geoWatchID = navigator.geolocation.watchPosition(handleGPSUpdate, handleGPSError, { enableHighAccuracy: true, maximumAge: 0 });
                 }
             }
         });
 
+        function resetDriverManualStates() {
+            driverManualTransitOverride = false;
+            departBtn.innerText = "Depart Current Stop Now";
+            departBtn.style.backgroundColor = "var(--warning)";
+            departBtn.disabled = false;
+        }
+
         function handleGPSUpdate(position) {
+            latestStoredPosition = position;
             const lat = position.coords.latitude;
             const lng = position.coords.longitude;
             const accuracy = position.coords.accuracy; 
             
             document.getElementById('driver-coords').innerHTML = `Lat: ${lat.toFixed(6)}<br>Lng: ${lng.toFixed(6)}<br>Signal Error Margin: ${accuracy.toFixed(1)}m`;
             
-            let closestStopName = "";
             let shortestDistanceInMeters = Infinity;
+            let foundClosestStopName = "";
 
             for (const [stopName, coords] of Object.entries(stopCoordinates)) {
                 const distanceMeters = calculateHaversineDistanceInMeters(lat, lng, coords[0], coords[1]);
                 if (distanceMeters < shortestDistanceInMeters) {
                     shortestDistanceInMeters = distanceMeters;
-                    closestStopName = stopName;
+                    foundClosestStopName = stopName;
                 }
             }
 
-            // Always ensure target variables map cleanly against active broadcast states
             const activeRouteKey = isBroadcasting ? currentBroadcastedRoute : driverRouteSelect.value;
             const routeStopsArray = routeSchedules[activeRouteKey];
-            let calculatedLocationText = "";
-            let calculatedETAText = "";
+            
+            // AUTOMATED GEOFENCE EVALUATION ENGINE
+            let isStoppedValue = false;
+            let displayStatusText = "";
 
-            if (shortestDistanceInMeters <= 150) {
-                calculatedLocationText = `At ${closestStopName}`;
-                const currentStopPositionIdx = routeStopsArray.indexOf(closestStopName);
-                let upcomingStopTarget = routeStopsArray[0];
-                if (currentStopPositionIdx !== -1 && (currentStopPositionIdx + 1) < routeStopsArray.length) {
-                    upcomingStopTarget = routeStopsArray[currentStopPositionIdx + 1];
-                }
-                calculatedETAText = `⏱️ Delayed: Boarding for ${upcomingStopTarget}`;
+            if (shortestDistanceInMeters <= 150 && !driverManualTransitOverride) {
+                // Safely inside geofence perimeter limits and has not tapped manual department override
+                isStoppedValue = true;
+                currentClosestStopName = foundClosestStopName;
+                displayStatusText = `🟡 Stopped: Parked inside ${currentClosestStopName}`;
             } else {
-                let upcomingStopTarget = closestStopName;
-                calculatedLocationText = `In Transit (Approaching ${closestStopName})`;
-                const mockMinutes = Math.floor(Math.random() * 5) + 2;
-                calculatedETAText = `⏱️ ETA: ~${mockMinutes} mins away from ${upcomingStopTarget}`;
+                // Either walked outside geofence boundary or explicitly forced the Departure override state event
+                isStoppedValue = false;
+                
+                // If we forced manual override but the hardware engine still loops inside old fence indices, look ahead!
+                if (driverManualTransitOverride && foundClosestStopName === currentClosestStopName) {
+                    const fallbackIdx = routeStopsArray.indexOf(currentClosestStopName);
+                    const lookAheadIdx = (fallbackIdx + 1) % routeStopsArray.length;
+                    currentClosestStopName = routeStopsArray[lookAheadIdx];
+                } else {
+                    currentClosestStopName = foundClosestStopName;
+                    // Reset manual tracking variables automatically once physical GPS catches up into next transit line vector
+                    if (driverManualTransitOverride && shortestDistanceInMeters > 150) {
+                        resetDriverManualStates();
+                    }
+                }
+                displayStatusText = `🚀 In Transit: Moving towards ${currentClosestStopName}`;
             }
 
-            document.getElementById('driver-status').innerHTML = `🟢 Live: ${calculatedLocationText}`;
+            document.getElementById('driver-status').innerHTML = `🟢 Live Engine: ${displayStatusText}`;
 
             const busLabelIdentifier = document.getElementById('bus-number').value.trim().toUpperCase();
             const payload = {
                 route: activeRouteKey,
-                location: calculatedLocationText,
-                eta: calculatedETAText,
+                closestStop: currentClosestStopName,
+                isStopped: isStoppedValue,
                 asset: busLabelIdentifier,
                 offline: false
             };
@@ -570,7 +671,8 @@
             document.getElementById('student-panel').classList.add('active');
         }
         
-        // Execute empty initialization visual render pass smoothly on view load
+        // Populate defaults on view load state initialization passes safely
+        populateStudentDestinationDropdown(document.getElementById('route-select').value);
         renderBusFleetDisplay();
     </script>
 </body>
