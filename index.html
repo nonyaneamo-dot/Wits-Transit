@@ -219,8 +219,7 @@
             </select>
 
             <label>Active Buses on Route</label>
-            <div id="bus-fleet-container">
-                </div>
+            <div id="bus-fleet-container"></div>
         </div>
 
         <div id="driver-panel" class="view-panel">
@@ -308,6 +307,7 @@
         let trackedBusesData = {};
         let isSearching = false;
         let searchTimeout = null;
+        let currentBroadcastedRoute = ""; // State tracker to isolate driver side route transitions
 
         // INITIALIZE SECURE CLOUD CONNECTION PIPELINE
         const clientID = "client_" + Math.random().toString(16).substr(2, 8);
@@ -348,14 +348,11 @@
                 mqttClient.subscribe(UNIQUE_PROJECT_ID + "/" + currentRoute + "/+");
                 
                 trackedBusesData = {}; 
-                
-                // Trigger the searching phase states instantly
                 isSearching = true;
                 renderBusFleetDisplay();
 
                 if (searchTimeout) clearTimeout(searchTimeout);
                 
-                // Allow a 4-second listening window before declaring the line completely empty
                 searchTimeout = setTimeout(() => {
                     isSearching = false;
                     renderBusFleetDisplay();
@@ -400,7 +397,7 @@
 
         setInterval(renderBusFleetDisplay, 5000);
 
-        // HAVERSINE PRECISION RADIAL METRIC ENGINE
+        // HAVERSINE CALCULATOR
         function calculateHaversineDistanceInMeters(lat1, lon1, lat2, lon2) {
             const R = 6371e3; 
             const phi1 = lat1 * Math.PI / 180;
@@ -416,10 +413,35 @@
             return R * c; 
         }
 
-        // TELEMETRY HARDWARE CONTROLLER PIPELINE
+        // TELEMETRY HARDWARE ENGINE INTERFACE
         let geoWatchID = null;
         let isBroadcasting = false;
         const broadcastBtn = document.getElementById('broadcast-btn');
+        const driverRouteSelect = document.getElementById('driver-route-select');
+
+        // ROUTE SWITCH HOOK ENGINE (Instantly drops old route and triggers immediate new update)
+        driverRouteSelect.addEventListener('change', () => {
+            if (isBroadcasting && currentBroadcastedRoute) {
+                const busLabelIdentifier = document.getElementById('bus-number').value.trim().toUpperCase();
+                
+                // 1. Instantly clear us off the PREVIOUS route dashboard
+                if (mqttClient.isConnected()) {
+                    const offlinePayload = { route: currentBroadcastedRoute, asset: busLabelIdentifier, offline: true };
+                    const msg = new Paho.MQTT.Message(JSON.stringify(offlinePayload));
+                    msg.destinationName = UNIQUE_PROJECT_ID + "/" + currentBroadcastedRoute + "/" + clientID;
+                    mqttClient.send(msg);
+                }
+
+                // 2. Synchronize internal tracker to the new channel selection
+                currentBroadcastedRoute = driverRouteSelect.value;
+                document.getElementById('driver-status').innerText = "Rerouting stream, acquiring new fix...";
+
+                // 3. Force immediate hardware position poll on the new line
+                navigator.geolocation.getCurrentPosition(handleGPSUpdate, handleGPSError, {
+                    enableHighAccuracy: true
+                });
+            }
+        });
 
         broadcastBtn.addEventListener('click', () => {
             const inputField = document.getElementById('bus-number');
@@ -429,18 +451,17 @@
             }
 
             if (isBroadcasting) {
-                const selectedRoute = document.getElementById('driver-route-select').value;
-                const busLabelIdentifier = inputField.value.trim().toUpperCase();
-                
-                if (mqttClient.isConnected()) {
-                    const offlinePayload = { route: selectedRoute, asset: busLabelIdentifier, offline: true };
+                if (mqttClient.isConnected() && currentBroadcastedRoute) {
+                    const busLabelIdentifier = inputField.value.trim().toUpperCase();
+                    const offlinePayload = { route: currentBroadcastedRoute, asset: busLabelIdentifier, offline: true };
                     const msg = new Paho.MQTT.Message(JSON.stringify(offlinePayload));
-                    msg.destinationName = UNIQUE_PROJECT_ID + "/" + selectedRoute + "/" + clientID;
+                    msg.destinationName = UNIQUE_PROJECT_ID + "/" + currentBroadcastedRoute + "/" + clientID;
                     mqttClient.send(msg);
                 }
 
                 if (geoWatchID) navigator.geolocation.clearWatch(geoWatchID);
                 isBroadcasting = false;
+                currentBroadcastedRoute = "";
                 broadcastBtn.innerText = "Broadcast GPS Position";
                 broadcastBtn.style.backgroundColor = "var(--driver-color)";
                 document.getElementById('driver-status').innerText = "Tracking Standby";
@@ -449,16 +470,16 @@
                 if ("geolocation" in navigator) {
                     isBroadcasting = true;
                     inputField.disabled = true;
+                    currentBroadcastedRoute = driverRouteSelect.value;
                     broadcastBtn.innerText = "Disconnect Live Broadcast";
                     broadcastBtn.style.backgroundColor = "#d90429";
                     document.getElementById('driver-status').innerText = "Acquiring Precision Sat Fix...";
 
-                    // LATENCY FIX: Force an immediate individual location poll right now!
+                    // LATENCY FIX: Fire immediate query token payload transmission sequence
                     navigator.geolocation.getCurrentPosition(handleGPSUpdate, handleGPSError, {
                         enableHighAccuracy: true
                     });
 
-                    // Subsequently queue the moving listener channel thread loop
                     geoWatchID = navigator.geolocation.watchPosition(handleGPSUpdate, handleGPSError, {
                         enableHighAccuracy: true,
                         maximumAge: 0
@@ -485,14 +506,14 @@
                 }
             }
 
-            const selectedRoute = document.getElementById('driver-route-select').value;
-            const routeStopsArray = routeSchedules[selectedRoute];
+            // Always ensure target variables map cleanly against active broadcast states
+            const activeRouteKey = isBroadcasting ? currentBroadcastedRoute : driverRouteSelect.value;
+            const routeStopsArray = routeSchedules[activeRouteKey];
             let calculatedLocationText = "";
             let calculatedETAText = "";
 
             if (shortestDistanceInMeters <= 150) {
                 calculatedLocationText = `At ${closestStopName}`;
-                
                 const currentStopPositionIdx = routeStopsArray.indexOf(closestStopName);
                 let upcomingStopTarget = routeStopsArray[0];
                 if (currentStopPositionIdx !== -1 && (currentStopPositionIdx + 1) < routeStopsArray.length) {
@@ -510,7 +531,7 @@
 
             const busLabelIdentifier = document.getElementById('bus-number').value.trim().toUpperCase();
             const payload = {
-                route: selectedRoute,
+                route: activeRouteKey,
                 location: calculatedLocationText,
                 eta: calculatedETAText,
                 asset: busLabelIdentifier,
@@ -519,7 +540,7 @@
 
             if (mqttClient.isConnected()) {
                 const message = new Paho.MQTT.Message(JSON.stringify(payload));
-                message.destinationName = UNIQUE_PROJECT_ID + "/" + selectedRoute + "/" + clientID;
+                message.destinationName = UNIQUE_PROJECT_ID + "/" + activeRouteKey + "/" + clientID;
                 mqttClient.send(message);
             }
         }
@@ -530,7 +551,6 @@
 
         function verifyAccessGateToken() {
             const tokenInput = document.getElementById('access-code-input');
-            
             if (tokenInput.value === "WITS2026") {
                 document.getElementById('student-panel').classList.remove('active');
                 document.getElementById('gate-container').style.display = "none";
@@ -549,6 +569,9 @@
             document.getElementById('gate-container').style.display = "flex";
             document.getElementById('student-panel').classList.add('active');
         }
+        
+        // Execute empty initialization visual render pass smoothly on view load
+        renderBusFleetDisplay();
     </script>
 </body>
 </html>
