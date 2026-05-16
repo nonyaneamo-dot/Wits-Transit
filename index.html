@@ -41,34 +41,6 @@
         h1 { font-size: 24px; margin: 0 0 4px 0; font-weight: 800; }
         header p { color: var(--muted); margin: 0; font-size: 13px; }
 
-        .role-container {
-            display: flex;
-            width: 100%;
-            max-width: 450px;
-            background: #ffe5ec;
-            border-radius: 12px;
-            padding: 4px;
-            box-sizing: border-box;
-            margin-bottom: 16px;
-        }
-
-        .role-btn {
-            flex: 1;
-            padding: 10px;
-            border: none;
-            background: transparent;
-            font-weight: 700;
-            color: var(--text);
-            cursor: pointer;
-            border-radius: 10px;
-            font-size: 14px;
-        }
-
-        .role-btn.active {
-            background: var(--card);
-            box-shadow: 0 4px 10px rgba(0,0,0,0.05);
-        }
-
         .dashboard-card {
             background: var(--card);
             width: 100%;
@@ -118,11 +90,7 @@
             transition: all 0.2s ease;
         }
 
-        /* Dynamic Multi-Bus Cards Container */
-        #bus-fleet-container {
-            margin-top: 10px;
-        }
-
+        /* Bus Fleet Output Display Layout cards */
         .bus-card {
             background-color: var(--accent);
             border-left: 5px solid var(--primary-dark);
@@ -170,19 +138,48 @@
             font-family: monospace;
             line-height: 1.4;
         }
+
+        /* Hidden Gate Authorization Panel footer styling */
+        .gate-footer {
+            margin-top: 24px;
+            border-top: 1px dashed #ffe5ec;
+            padding-top: 16px;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .gate-input-wrapper {
+            display: flex;
+            gap: 8px;
+            margin-top: 4px;
+        }
+
+        .gate-input-wrapper input {
+            margin-bottom: 0;
+            padding: 10px 14px;
+            font-size: 13px;
+            border-radius: 8px;
+        }
+
+        .gate-btn {
+            background-color: #4a154b;
+            color: white;
+            border: none;
+            padding: 10px 14px;
+            font-weight: 700;
+            font-size: 12px;
+            border-radius: 8px;
+            cursor: pointer;
+        }
     </style>
 </head>
 <body>
 
     <header>
         <h1>Wits Transit Network</h1>
-        <p>Precision Real-Time Tracking Fleet</p>
+        <p>Precision Fleet System Monitor</p>
     </header>
-
-    <div class="role-container">
-        <button id="student-tab" class="role-btn active" onclick="switchRole('student')">🎓 Student View</button>
-        <button id="driver-tab" class="role-btn" onclick="switchRole('driver')">🚌 Driver Tracker</button>
-    </div>
 
     <div class="dashboard-card">
         
@@ -204,10 +201,15 @@
         </div>
 
         <div id="driver-panel" class="view-panel">
-            <label for="bus-number">Bus / Shuttle Number</label>
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                <span style="font-weight: 800; color: var(--driver-color); font-size: 14px;">🛠️ Operational Driver Console</span>
+                <button onclick="logoutDriver()" style="background: none; border: none; color: red; font-size: 12px; font-weight: 700; cursor: pointer;">Exit Console</button>
+            </div>
+
+            <label for="bus-number">Bus / Shuttle Identifier Number</label>
             <input type="text" id="bus-number" placeholder="e.g. Bus 04, Shuttle 12" maxlength="15">
 
-            <label for="driver-route-select">Assigned Route</label>
+            <label for="driver-route-select">Assigned Mission Route Path</label>
             <select id="driver-route-select">
                 <option value="route1">Route 1 - Full Circuit</option>
                 <option value="route2">Route 2 - NSW / WEC Shuttle</option>
@@ -218,9 +220,19 @@
             <button id="broadcast-btn" class="action" style="background-color: var(--driver-color);">Broadcast GPS Position</button>
 
             <div class="status-panel">
-                <div class="status-title">Local Tracking Status</div>
+                <div class="status-title">Local Geofencing Metrics</div>
                 <div id="driver-status" class="status-value">Tracking Standby</div>
-                <div id="driver-coords" class="debug-coords">Lat: --<br>Lng: --<br>Accuracy: --</div>
+                <div id="driver-coords" class="debug-coords">Lat: --<br>Lng: --<br>Accuracy Radius: --</div>
+            </div>
+        </div>
+
+        <div class="gate-footer" id="gate-container">
+            <div style="font-size: 12px; color: var(--muted); line-height: 1.4;">
+                🎒 <b>Lost Property Lookup:</b> Match the Fleet ID on your dashboard logs to terminal support lines to retrieve left bags.
+            </div>
+            <div class="gate-input-wrapper">
+                <input type="password" id="access-code-input" placeholder="Enter Staff Console Pin Code">
+                <button class="gate-btn" onclick="verifyAccessGateToken()">Verify</button>
             </div>
         </div>
 
@@ -229,11 +241,11 @@
     <script>
         const UNIQUE_PROJECT_ID = "wits_campus_tracker_2026_prod";
 
-        // Accurate geographic coordinate stops map
+        // Fine-tuned, precise core coordinate metrics (Centered on 23 Junction Ave entrance)
         const stopCoordinates = {
             "AMIC Deck": [-26.1926, 28.0303],
             "Noswall Hall": [-26.1912, 28.0325],
-            "Wits Junction": [-26.1824, 28.0361],
+            "Wits Junction": [-26.18203, 28.03683], 
             "Wits Education Campus": [-26.1775, 28.0442],
             "EOH (Oppenheimer)": [-26.1802, 28.0285],
             "KNK Residence": [-26.1845, 28.0290],
@@ -247,10 +259,9 @@
             route6d: ["Wits Junction", "Rosebank Mall"]
         };
 
-        // Object memory storage to track multiple buses independently on student side
         let trackedBusesData = {};
 
-        // INITIALIZE SECURE CLOUD CONNECTION ENGINE
+        // ENGINE CLOUD PIPELINE CONNECTIONS (Secure port configuration active)
         const clientID = "client_" + Math.random().toString(16).substr(2, 8);
         const mqttClient = new Paho.MQTT.Client("broker.hivemq.com", Number(8884), "/mqtt", clientID);
 
@@ -262,7 +273,6 @@
             const data = JSON.parse(message.payloadString);
             const currentSelectedRoute = document.getElementById('route-select').value;
             
-            // Only capture packets belonging to the active selected screen view filter
             if (data.route === currentSelectedRoute) {
                 trackedBusesData[data.asset] = {
                     location: data.location,
@@ -276,31 +286,26 @@
         mqttClient.connect({ onSuccess: onConnect, useSSL: true });
 
         function onConnect() {
-            // Dynamic scoping subscription setup safely handles routing channel traffic independently
             updateSubscription();
         }
 
         function updateSubscription() {
             if (mqttClient.isConnected()) {
                 const currentRoute = document.getElementById('route-select').value;
-                // Unsubscribe from everything, then lock onto ONLY the active route channel path
                 mqttClient.unsubscribe(UNIQUE_PROJECT_ID + "/#");
                 mqttClient.subscribe(UNIQUE_PROJECT_ID + "/" + currentRoute + "/+");
-                trackedBusesData = {}; // Flush cache layout view cleanly
+                trackedBusesData = {}; 
                 renderBusFleetDisplay();
             }
         }
 
-        document.getElementById('route-select').value = "route1";
         document.getElementById('route-select').addEventListener('change', updateSubscription);
 
-        // DYNAMIC STUDENT INTERFACE RENDERER
         function renderBusFleetDisplay() {
             const container = document.getElementById('bus-fleet-container');
             container.innerHTML = "";
             
             const activeBusesKeys = Object.keys(trackedBusesData).filter(key => {
-                // Garbage Collection: Drop tracker nodes if they stop broadcasting for over 25 seconds
                 return (Date.now() - trackedBusesData[key].timestamp) < 25000;
             });
 
@@ -325,12 +330,11 @@
             });
         }
 
-        // PERSISTENT CLEANING INTERMEDIARY LOOPS RUNNING EVERY 5 SECONDS
         setInterval(renderBusFleetDisplay, 5000);
 
-        // THE PRECISION HAVERSINE FORMULA CALCULATOR METHOD ENGINE
+        // HAVERSINE PRECISION RADIAL CALCULATION MATRIX ENGINE
         function calculateHaversineDistanceInMeters(lat1, lon1, lat2, lon2) {
-            const R = 6371e3; // Earth radius in exact meters
+            const R = 6371e3; 
             const phi1 = lat1 * Math.PI / 180;
             const phi2 = lat2 * Math.PI / 180;
             const deltaPhi = (lat2 - lat1) * Math.PI / 180;
@@ -341,10 +345,10 @@
                       Math.sin(deltaLon / 2) * Math.sin(deltaLon / 2);
             const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 
-            return R * c; // Absolute separation value returned accurately in meters
+            return R * c; 
         }
 
-        // HARDWARE BROADCASTER PORT (DRIVER POSITION HANDLERS)
+        // DEVICE HARDWARE HARVESTER AND TELEMETRY PORT STREAMERS
         let geoWatchID = null;
         let isBroadcasting = false;
         const broadcastBtn = document.getElementById('broadcast-btn');
@@ -352,7 +356,7 @@
         broadcastBtn.addEventListener('click', () => {
             const inputField = document.getElementById('bus-number');
             if (!inputField.value.trim()) {
-                alert("Please assign a Bus / Shuttle Number before launching broadcast protocols.");
+                alert("Please input an operational vehicle asset label description first.");
                 return;
             }
 
@@ -361,7 +365,7 @@
                 isBroadcasting = false;
                 broadcastBtn.innerText = "Broadcast GPS Position";
                 broadcastBtn.style.backgroundColor = "var(--driver-color)";
-                document.getElementById('driver-status').innerText = "Tracking Standby";
+                document.getElementById('driver-status').innerText = "Tracking Disconnected / Standby";
                 inputField.disabled = false;
             } else {
                 if ("geolocation" in navigator) {
@@ -369,14 +373,12 @@
                     inputField.disabled = true;
                     broadcastBtn.innerText = "Disconnect Live Broadcast";
                     broadcastBtn.style.backgroundColor = "#d90429";
-                    document.getElementById('driver-status').innerText = "Acquiring GPS Fix...";
+                    document.getElementById('driver-status').innerText = "Acquiring Precision Sat Fix...";
 
                     geoWatchID = navigator.geolocation.watchPosition(handleGPSUpdate, handleGPSError, {
                         enableHighAccuracy: true,
                         maximumAge: 0
                     });
-                } else {
-                    alert("Hardware tracking services are completely restricted or absent on this engine.");
                 }
             }
         });
@@ -384,14 +386,13 @@
         function handleGPSUpdate(position) {
             const lat = position.coords.latitude;
             const lng = position.coords.longitude;
-            const accuracy = position.coords.accuracy; // Metric footprint diameter boundary indicator
+            const accuracy = position.coords.accuracy; 
             
-            document.getElementById('driver-coords').innerHTML = `Lat: ${lat.toFixed(6)}<br>Lng: ${lng.toFixed(6)}<br>Accuracy Radius: ${accuracy.toFixed(1)}m`;
+            document.getElementById('driver-coords').innerHTML = `Lat: ${lat.toFixed(6)}<br>Lng: ${lng.toFixed(6)}<br>Signal Error Margin: ${accuracy.toFixed(1)}m`;
             
             let closestStopName = "";
             let shortestDistanceInMeters = Infinity;
 
-            // Run Haversine comparative analysis metric maps cycles completely
             for (const [stopName, coords] of Object.entries(stopCoordinates)) {
                 const distanceMeters = calculateHaversineDistanceInMeters(lat, lng, coords[0], coords[1]);
                 if (distanceMeters < shortestDistanceInMeters) {
@@ -400,17 +401,15 @@
                 }
             }
 
-            // GEOFENCE BOUNDARY VALIDATOR: 80-meter trigger box
             const selectedRoute = document.getElementById('driver-route-select').value;
             const routeStopsArray = routeSchedules[selectedRoute];
             let calculatedLocationText = "";
             let calculatedETAText = "";
 
-            if (shortestDistanceInMeters <= 80) {
-                // Physically parked inside terminal geofence limits safely
+            // EXPANDED METRIC GEOPATH FENCE LIMIT TRIGGER BOX (Set to 150m to solve structural attenuation)
+            if (shortestDistanceInMeters <= 150) {
                 calculatedLocationText = `At ${closestStopName}`;
                 
-                // Find next stop layout targeting sequence parameters
                 const currentStopPositionIdx = routeStopsArray.indexOf(closestStopName);
                 let upcomingStopTarget = routeStopsArray[0];
                 if (currentStopPositionIdx !== -1 && (currentStopPositionIdx + 1) < routeStopsArray.length) {
@@ -418,11 +417,7 @@
                 }
                 calculatedETAText = `⏱️ Delayed: Boarding for ${upcomingStopTarget}`;
             } else {
-                // Bus is safely out roaming on highway channels in transit lines
-                // Find index matching closest hub node to construct navigation context details safely
-                const targetStopIndexIdx = routeStopsArray.indexOf(closestStopName);
-                let upcomingStopTarget = closestStopName; // Default parameter alignment fallback target node
-                
+                let upcomingStopTarget = closestStopName;
                 calculatedLocationText = `In Transit (Approaching ${closestStopName})`;
                 const mockMinutes = Math.floor(Math.random() * 5) + 2;
                 calculatedETAText = `⏱️ ETA: ~${mockMinutes} mins away from ${upcomingStopTarget}`;
@@ -430,7 +425,6 @@
 
             document.getElementById('driver-status').innerHTML = `🟢 Live: ${calculatedLocationText}`;
 
-            // TRANSMIT ENCRYPTED DATA PACKAGE PACKETS THROUGH SECURE DATA LINKS
             const busLabelIdentifier = document.getElementById('bus-number').value.trim();
             const payload = {
                 route: selectedRoute,
@@ -447,23 +441,31 @@
         }
 
         function handleGPSError(err) {
-            document.getElementById('driver-status').innerText = "GPS Engine Malfunction: Turn on Location services.";
+            document.getElementById('driver-status').innerText = "GPS Access Token Error. Check device permissions layouts.";
         }
 
-        // GENERAL PRESENTATION UTILITY PANEL VIEW MANAGEMENT SWITCHERS
-        function switchRole(role) {
-            document.getElementById('student-tab').classList.remove('active');
-            document.getElementById('driver-tab').classList.remove('active');
-            document.getElementById('student-panel').classList.remove('active');
-            document.getElementById('driver-panel').classList.remove('active');
+        // ROLE MANAGEMENT & SECURITY GATING MECHANICS FUNCTIONS
+        function verifyAccessGateToken() {
+            const tokenInput = document.getElementById('access-code-input');
             
-            if (role === 'student') {
-                document.getElementById('student-tab').classList.add('active');
-                document.getElementById('student-panel').classList.add('active');
-            } else {
-                document.getElementById('driver-tab').classList.add('active');
+            // THE PRIVILEGED OPERATIONAL KEY SYNC PASSCODE: WITS2026
+            if (tokenInput.value === "WITS2026") {
+                document.getElementById('student-panel').classList.remove('active');
+                document.getElementById('gate-container').style.display = "none";
                 document.getElementById('driver-panel').classList.add('active');
+                tokenInput.value = ""; // Clear password buffer cleanly
+            } else {
+                alert("Invalid security authorization access credential token.");
             }
+        }
+
+        function logoutDriver() {
+            if (isBroadcasting) {
+                broadcastBtn.click(); // Gracefully sever active radio telemetry before exit loop
+            }
+            document.getElementById('driver-panel').classList.remove('active');
+            document.getElementById('gate-container').style.display = "flex";
+            document.getElementById('student-panel').classList.add('active');
         }
     </script>
 </body>
