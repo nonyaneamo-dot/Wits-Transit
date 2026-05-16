@@ -67,7 +67,7 @@
         select, input {
             width: 100%;
             padding: 16px;
-            font-size: 16px;
+            font-size: 15px;
             border-radius: 14px;
             border: 2px solid #ffe5ec;
             background-color: #fbfbfb;
@@ -76,6 +76,18 @@
             margin-bottom: 20px;
             box-sizing: border-box;
             outline: none;
+        }
+
+        optgroup {
+            font-style: normal;
+            font-weight: bold;
+            color: var(--primary-dark);
+            background: #fff;
+        }
+
+        option {
+            color: var(--text);
+            font-weight: 500;
         }
 
         button.action {
@@ -186,10 +198,24 @@
         <div id="student-panel" class="view-panel active">
             <label for="route-select">Select Target Route</label>
             <select id="route-select">
-                <option value="route1">Route 1 - Full Circuit</option>
-                <option value="route2">Route 2 - NSW / WEC Shuttle</option>
-                <option value="route3a">Route 3A - WJ / AMIC Shuttle</option>
-                <option value="route6d">Route 6D - Rosebank Shuttle</option>
+                <optgroup label="📅 Weekday Operations (Mon - Fri)">
+                    <option value="route1">Route 1 - Full Circuit</option>
+                    <option value="route2">Route 2 - NSW / WEC Shuttle</option>
+                    <option value="route3a">Route 3A - WJ / AMIC Shuttle</option>
+                    <option value="route3b">Route 3B - WJ / WEC Shuttle</option>
+                    <option value="route4a">Route 4A - AMIC / NSW / WEC</option>
+                    <option value="route4a1">Route 4A1 - WEC / NSW / AMIC</option>
+                    <option value="route4b">Route 4B - NSW / WEC / AMIC</option>
+                    <option value="route5">Route 5 - EOH / KNK / AMIC</option>
+                </optgroup>
+                <optgroup label="🏖️ Weekend & Holiday Operations (Sat - Sun)">
+                    <option value="route1_weekend">Route 1 - Weekend Circuit</option>
+                    <option value="route3c">Route 3C - WJ / WEC / AMIC Loop</option>
+                    <option value="route6a">Route 6A - AMIC / KNK / Rosebank</option>
+                    <option value="route6b">Route 6B - AMIC / NSW / Rosebank</option>
+                    <option value="route6c">Route 6C - WEC / EOH / Rosebank</option>
+                    <option value="route6d">Route 6D - WJ / Rosebank Shuttle</option>
+                </optgroup>
             </select>
 
             <label>Active Buses on Route</label>
@@ -211,10 +237,24 @@
 
             <label for="driver-route-select">Assigned Mission Route Path</label>
             <select id="driver-route-select">
-                <option value="route1">Route 1 - Full Circuit</option>
-                <option value="route2">Route 2 - NSW / WEC Shuttle</option>
-                <option value="route3a">Route 3A - WJ / AMIC Shuttle</option>
-                <option value="route6d">Route 6D - Rosebank Shuttle</option>
+                <optgroup label="📅 Weekday Operations (Mon - Fri)">
+                    <option value="route1">Route 1 - Full Circuit</option>
+                    <option value="route2">Route 2 - NSW / WEC Shuttle</option>
+                    <option value="route3a">Route 3A - WJ / AMIC Shuttle</option>
+                    <option value="route3b">Route 3B - WJ / WEC Shuttle</option>
+                    <option value="route4a">Route 4A - AMIC / NSW / WEC</option>
+                    <option value="route4a1">Route 4A1 - WEC / NSW / AMIC</option>
+                    <option value="route4b">Route 4B - NSW / WEC / AMIC</option>
+                    <option value="route5">Route 5 - EOH / KNK / AMIC</option>
+                </optgroup>
+                <optgroup label="🏖️ Weekend & Holiday Operations (Sat - Sun)">
+                    <option value="route1_weekend">Route 1 - Weekend Circuit</option>
+                    <option value="route3c">Route 3C - WJ / WEC / AMIC Loop</option>
+                    <option value="route6a">Route 6A - AMIC / KNK / Rosebank</option>
+                    <option value="route6b">Route 6B - AMIC / NSW / Rosebank</option>
+                    <option value="route6c">Route 6C - WEC / EOH / Rosebank</option>
+                    <option value="route6d">Route 6D - WJ / Rosebank Shuttle</option>
+                </optgroup>
             </select>
 
             <button id="broadcast-btn" class="action" style="background-color: var(--driver-color);">Broadcast GPS Position</button>
@@ -241,27 +281,38 @@
     <script>
         const UNIQUE_PROJECT_ID = "wits_campus_tracker_2026_prod";
 
-        // Fine-tuned, precise core coordinate metrics (Centered on 23 Junction Ave entrance)
+        // Upgraded and expanded precise geographic stop dataset anchors
         const stopCoordinates = {
-            "AMIC Deck": [-26.1926, 28.0303],
-            "Noswall Hall": [-26.1912, 28.0325],
+            "AMIC Deck": [-26.19260, 28.03030],
+            "Noswall Hall": [-26.19120, 28.03250],
             "Wits Junction": [-26.18203, 28.03683], 
-            "Wits Education Campus": [-26.1775, 28.0442],
-            "EOH (Oppenheimer)": [-26.1802, 28.0285],
-            "KNK Residence": [-26.1845, 28.0290],
-            "Rosebank Mall": [-26.1462, 28.0416]
+            "Wits Education Campus": [-26.17963, 28.04442], // PRECISION RE-CONFIGURED FIXED METRIC
+            "EOH (Oppenheimer)": [-26.18020, 28.02850],
+            "KNK Residence": [-26.18450, 28.0290],
+            "Rosebank Mall": [-26.14620, 28.04160]
         };
 
+        // Fully exhaustive schedule arrays representing ALL possible timetable channels
         const routeSchedules = {
             route1: ["AMIC Deck", "Noswall Hall", "Wits Junction", "Wits Education Campus", "EOH (Oppenheimer)", "KNK Residence"],
             route2: ["Noswall Hall", "Wits Education Campus", "AMIC Deck"],
             route3a: ["Wits Junction", "AMIC Deck"],
+            route3b: ["Wits Junction", "Wits Education Campus"],
+            route4a: ["AMIC Deck", "Noswall Hall", "Wits Education Campus"],
+            route4a1: ["Wits Education Campus", "Noswall Hall", "AMIC Deck"],
+            route4b: ["Noswall Hall", "Wits Education Campus", "AMIC Deck"],
+            route5: ["EOH (Oppenheimer)", "KNK Residence", "AMIC Deck"],
+            route1_weekend: ["AMIC Deck", "Noswall Hall", "Wits Education Campus", "EOH (Oppenheimer)", "KNK Residence"], // Excludes WJ Residence over weekends
+            route3c: ["Wits Junction", "Wits Education Campus", "AMIC Deck"],
+            route6a: ["AMIC Deck", "KNK Residence", "Rosebank Mall"],
+            route6b: ["AMIC Deck", "Noswall Hall", "Rosebank Mall"],
+            route6c: ["Wits Education Campus", "EOH (Oppenheimer)", "Rosebank Mall"],
             route6d: ["Wits Junction", "Rosebank Mall"]
         };
 
         let trackedBusesData = {};
 
-        // ENGINE CLOUD PIPELINE CONNECTIONS (Secure port configuration active)
+        // INITIALIZE SECURE CLOUD CONNECTION PIPELINE
         const clientID = "client_" + Math.random().toString(16).substr(2, 8);
         const mqttClient = new Paho.MQTT.Client("broker.hivemq.com", Number(8884), "/mqtt", clientID);
 
@@ -274,11 +325,16 @@
             const currentSelectedRoute = document.getElementById('route-select').value;
             
             if (data.route === currentSelectedRoute) {
-                trackedBusesData[data.asset] = {
-                    location: data.location,
-                    eta: data.eta,
-                    timestamp: Date.now()
-                };
+                // INSTANT OFF-BOARD SEPARATION PROTOCOL: If device pushed an explicit offline signal, erase immediately
+                if (data.offline === true) {
+                    delete trackedBusesData[data.asset];
+                } else {
+                    trackedBusesData[data.asset] = {
+                        location: data.location,
+                        eta: data.eta,
+                        timestamp: Date.now()
+                    };
+                }
                 renderBusFleetDisplay();
             }
         };
@@ -306,6 +362,7 @@
             container.innerHTML = "";
             
             const activeBusesKeys = Object.keys(trackedBusesData).filter(key => {
+                // Safety cache sweeper for non-graceful dropouts (phone dies or loses signal completely)
                 return (Date.now() - trackedBusesData[key].timestamp) < 25000;
             });
 
@@ -330,9 +387,10 @@
             });
         }
 
+        // PERSISTENT PRESENTATION INTERMEDIARY RE-RENDER RECYCLER
         setInterval(renderBusFleetDisplay, 5000);
 
-        // HAVERSINE PRECISION RADIAL CALCULATION MATRIX ENGINE
+        // HAVERSINE PRECISION SPHERICAL GEOMETRY COMPUTATION ENGINE
         function calculateHaversineDistanceInMeters(lat1, lon1, lat2, lon2) {
             const R = 6371e3; 
             const phi1 = lat1 * Math.PI / 180;
@@ -348,7 +406,7 @@
             return R * c; 
         }
 
-        // DEVICE HARDWARE HARVESTER AND TELEMETRY PORT STREAMERS
+        // TELEMETRY BROADCASTER MANAGEMENT CORE
         let geoWatchID = null;
         let isBroadcasting = false;
         const broadcastBtn = document.getElementById('broadcast-btn');
@@ -361,11 +419,22 @@
             }
 
             if (isBroadcasting) {
+                // INSTANT RECOGNITION DISCONNECT TRANSMISSION LINE
+                const selectedRoute = document.getElementById('driver-route-select').value;
+                const busLabelIdentifier = inputField.value.trim().toUpperCase();
+                
+                if (mqttClient.isConnected()) {
+                    const offlinePayload = { route: selectedRoute, asset: busLabelIdentifier, offline: true };
+                    const msg = new Paho.MQTT.Message(JSON.stringify(offlinePayload));
+                    msg.destinationName = UNIQUE_PROJECT_ID + "/" + selectedRoute + "/" + clientID;
+                    mqttClient.send(msg);
+                }
+
                 if (geoWatchID) navigator.geolocation.clearWatch(geoWatchID);
                 isBroadcasting = false;
                 broadcastBtn.innerText = "Broadcast GPS Position";
                 broadcastBtn.style.backgroundColor = "var(--driver-color)";
-                document.getElementById('driver-status').innerText = "Tracking Disconnected / Standby";
+                document.getElementById('driver-status').innerText = "Tracking Standby";
                 inputField.disabled = false;
             } else {
                 if ("geolocation" in navigator) {
@@ -406,7 +475,7 @@
             let calculatedLocationText = "";
             let calculatedETAText = "";
 
-            // EXPANDED METRIC GEOPATH FENCE LIMIT TRIGGER BOX (Set to 150m to solve structural attenuation)
+            // 150m Adaptive Cluster Absorber Limit Boundary
             if (shortestDistanceInMeters <= 150) {
                 calculatedLocationText = `At ${closestStopName}`;
                 
@@ -425,12 +494,13 @@
 
             document.getElementById('driver-status').innerHTML = `🟢 Live: ${calculatedLocationText}`;
 
-            const busLabelIdentifier = document.getElementById('bus-number').value.trim();
+            const busLabelIdentifier = document.getElementById('bus-number').value.trim().toUpperCase();
             const payload = {
                 route: selectedRoute,
                 location: calculatedLocationText,
                 eta: calculatedETAText,
-                asset: busLabelIdentifier.toUpperCase()
+                asset: busLabelIdentifier,
+                offline: false
             };
 
             if (mqttClient.isConnected()) {
@@ -444,16 +514,15 @@
             document.getElementById('driver-status').innerText = "GPS Access Token Error. Check device permissions layouts.";
         }
 
-        // ROLE MANAGEMENT & SECURITY GATING MECHANICS FUNCTIONS
+        // ROLE MANAGEMENT & SECURITY ACCESS GATING MECHANICS
         function verifyAccessGateToken() {
             const tokenInput = document.getElementById('access-code-input');
             
-            // THE PRIVILEGED OPERATIONAL KEY SYNC PASSCODE: WITS2026
             if (tokenInput.value === "WITS2026") {
                 document.getElementById('student-panel').classList.remove('active');
                 document.getElementById('gate-container').style.display = "none";
                 document.getElementById('driver-panel').classList.add('active');
-                tokenInput.value = ""; // Clear password buffer cleanly
+                tokenInput.value = ""; 
             } else {
                 alert("Invalid security authorization access credential token.");
             }
@@ -461,7 +530,7 @@
 
         function logoutDriver() {
             if (isBroadcasting) {
-                broadcastBtn.click(); // Gracefully sever active radio telemetry before exit loop
+                broadcastBtn.click(); // Fires the graceful immediate server disconnect message cleanly
             }
             document.getElementById('driver-panel').classList.remove('active');
             document.getElementById('gate-container').style.display = "flex";
