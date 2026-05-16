@@ -215,7 +215,8 @@
 
         // CONNECT TO THE FREE REAL-TIME CLOUD RADIO TOWER (HiveMQ Public Broker)
         const clientID = "client_" + Math.random().toString(16).substr(2, 8);
-        const mqttClient = new Paho.MQTT.Client("broker.hivemq.com", Number(8000), "/mqtt", clientID);
+        const mqttClient = new Paho.MQTT.Client("broker.hivemq.com", Number(8884), "/mqtt", clientID);
+
 
         mqttClient.onConnectionLost = (responseObject) => {
             console.log("Connection Lost: " + responseObject.errorMessage);
